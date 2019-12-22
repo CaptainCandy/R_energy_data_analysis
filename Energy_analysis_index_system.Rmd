@@ -1,0 +1,133 @@
+---
+title: "Energy_analysis_index_system"
+author: "XinzeTang"
+date: "2019/12/21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load packages
+```{r warning=FALSE}
+library(dplyr)
+library(ggplot2)
+```
+
+## Load data which has been preprocessed. 
+
+```{r echo=FALSE}
+energy <- read.csv('wide_data_fill_final.csv', header = T)
+columns <- names(energy)
+energy
+```
+
+
+## Calculate indexes
+### Environmental Sustainability
+1. Renewable Energy Production Ratio
+```{r}
+## Extract production data
+production <- energy %>%
+  select(Year, StateCode, BMTCB, GETCB, HYTCB, WYTCB, SOTCB, NUETB, CLPRB, PAPRB, NGMPB, TEPRB) %>%
+  mutate(Total_Production = BMTCB + GETCB + HYTCB + WYTCB + SOTCB + NUETB + CLPRB + PAPRB + NGMPB) %>%
+  mutate(Renew_Ratio = (BMTCB + GETCB + HYTCB + WYTCB + SOTCB)/Total_Production)
+```
+```{r}
+ggplot(data = production, mapping = aes(x = Year, y = Renew_Ratio))+
+  geom_line(mapping = aes(color = StateCode)) +
+  labs(y = "Renewable Energy Production Ratio")
+```
+2. Renewable Energy Consumption Ratio
+```{r}
+## Extract consumption data
+consumption <- energy %>%
+  select(Year, StateCode, BMTCB, CLTCB, GETCB, HYTCB, NNTCB, PMTCB, WYTCB, SOTCB, NUETB, TETCB) %>%
+  mutate(Total_Consumption = BMTCB + CLTCB + GETCB + HYTCB + NNTCB + PMTCB + WYTCB + SOTCB + NUETB) %>%
+  mutate(Renew_Ratio = (BMTCB + GETCB + HYTCB + WYTCB + SOTCB)/Total_Consumption)
+```
+```{r}
+ggplot(data = consumption, mapping = aes(x = Year, y = Renew_Ratio))+
+  geom_line(mapping = aes(color = StateCode)) +
+  labs(y = "Renewable Energy Consumption Ratio")
+```
+
+
+3. Efficiency (Factor of Converting)
+  + Because the energy department only provide factor of converting for three main energy: natural gas, petroleum and coal, so we can onl use these three factors. 
+```{r}
+## MinMaxScaler
+rescale01 <- function(x) {
+  rng <- range(x, na.rm = TRUE)
+  (x - rng[1]) / (rng[2] - rng[1])
+}
+energy <- energy %>%
+  mutate(
+    CLEIK_scaled = rescale01(CLEIK),
+    NGEIK_scaled = rescale01(NGEIK),
+    PAEIK_scaled = rescale01(PAEIK)
+  )
+```
+```{r}
+## Calculate efficiency
+efficiency <- energy %>%
+  select(Year, StateCode, CLEIK_scaled, NGEIK_scaled, PAEIK_scaled) %>%
+  mutate(Efficiency = (CLEIK_scaled+NGEIK_scaled+PAEIK_scaled)/3)
+efficiency
+```
+```{r}
+ggplot(data = efficiency, mapping = aes(x = Year, y = Efficiency))+
+  geom_line(mapping = aes(color = StateCode)) +
+  labs(y = "Efficiency (Factor of Converting, scaled to 0-1)")
+```
+
+4. CO2 Emission per unit energy use
+```{r echo=FALSE}
+co2az = read.csv('co2_ar_fill_1.csv')
+co2ca = read.csv('co2_ca_fill_1.csv')
+co2nm = read.csv('co2_me_fill_1.csv')
+co2tx = read.csv('co2_te_fill_1.csv')
+co2az['StateCode']='AZ'
+co2ca['StateCode']='CA'
+co2nm['StateCode']='NM'
+co2tx['StateCode']='TX'
+```
+```{r}
+## Bind data from different files
+co2_emission <- rbind(co2az, co2ca, co2nm, co2tx) %>%
+  select(year, StateCode, Total) %>%
+  rename(Year=year, CO2_Emission=Total) %>%
+  filter(Year<=2009)
+## Extract consumption data
+consumption <- energy %>%
+  select(Year, StateCode, BMTCB, CLTCB, GETCB, HYTCB, NNTCB, PMTCB, WYTCB, SOTCB, NUETB, TETCB) %>%
+  mutate(Total_Consumption = BMTCB + CLTCB + GETCB + HYTCB + NNTCB + PMTCB + WYTCB + SOTCB + NUETB) %>%
+  select(Year, StateCode, Total_Consumption, TETCB)
+## Take the log of consumption to prevent small values
+co2_emission <- co2_emission %>% 
+  left_join(consumption, by = c('Year', 'StateCode')) %>%
+  mutate(Unit_CO2_Emission = CO2_Emission/log(Total_Consumption))
+  
+## MinMaxScaler
+co2_emission <- co2_emission %>%
+  mutate(Unit_CO2_Emission_scaled = rescale01(Unit_CO2_Emission))
+```
+```{r}
+ggplot(data = co2_emission, mapping = aes(x = Year, y = Unit_CO2_Emission_scaled))+
+  geom_line(mapping = aes(color = StateCode)) +
+  labs(y = "Unit CO2 Emission (scaled to 0-1)")
+```
+
+### Economic Growth and Development
+1. Energy Intensity
+2. Export Contribution
+3. Import Contribution
+4. Affordability
+
+### Energy Access and Security
+1. Self Sufficiency
+2. Energy Diversity Index
+3. Price Stability
+4. Energy Production per capita
+
