@@ -13,20 +13,27 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r warning=FALSE}
 library(dplyr)
 library(ggplot2)
+library(tidyverse)
+library(ggradar)
 ```
 
 ## Load data which has been preprocessed. 
 
-```{r echo=FALSE}
+```{r}
 energy <- read.csv('wide_data_fill_final.csv', header = T)
 columns <- names(energy)
-energy
 ```
 
 
-## Calculate indexes
+## Calculate 12 indicators for 3 indexes
+
 ### Environmental Sustainability
+
 1. Renewable Energy Production Ratio
+It tells the proportion of renewable energy production and the total production. It shows the ability and consciousness of exact state to use renewable energy. The more percent of renewable energy we produce, the less potential of pollution and waste we will yield, the better for the environment.
+$$
+Renewable\ Energy\  Production\  Ratio = \frac{rewable\  energy\  production(billion~btu)}{total\  energy\  production(billion~btu)}
+$$
 ```{r}
 ## Extract production data
 production <- energy %>%
@@ -39,7 +46,12 @@ ggplot(data = production, mapping = aes(x = Year, y = Renew_Ratio))+
   geom_line(mapping = aes(color = StateCode)) +
   labs(y = "Renewable Energy Production Ratio")
 ```
+
 2. Renewable Energy Consumption Ratio
+It tells the proportion of renewable energy consumption and the total consumption. It shows the popularity of renewable energy in a state. Similar to the Renewable Production Ratio, The more percent of renewable energy we consume, the better for the environment. 
+$$
+Renewable\ Energy\  Consumption\  Ratio = \frac{rewable\  energy\  consumption(billion~btu)}{total\  energy\  consumption(billion~btu)}
+$$
 ```{r}
 ## Extract consumption data
 consumption <- energy %>%
@@ -53,28 +65,39 @@ ggplot(data = consumption, mapping = aes(x = Year, y = Renew_Ratio))+
   labs(y = "Renewable Energy Consumption Ratio")
 ```
 
-
 3. Efficiency (Factor of Converting)
-  + Because the energy department only provide factor of converting for three main energy: natural gas, petroleum and coal, so we can onl use these three factors. 
+Because the energy department only provide factor of converting for three main energy: natural gas, petroleum and coal, so we can only use these three factors. 
+It shows the efficiency of converting primary energy to electricity. Efficiency shows whether the energy had been maximally utilized. If we can take maximum use of every unit energy, we can waste less and help the environment much.
+$$
+Efficiency = \frac{1}{n} \sum_{i=1}^n {factor~of~converting~by~energy~type(million~btu~per~short~ton)}
+$$
+
 ```{r}
 ## MinMaxScaler
 rescale01 <- function(x) {
   rng <- range(x, na.rm = TRUE)
   (x - rng[1]) / (rng[2] - rng[1])
 }
+rescale01_omit0 <- function(x) {
+  y <- x[x!=0]
+  rng <- range(y, na.rm = TRUE)
+  for (i in seq(1, length(x), by=1)){
+    if (x[i] != 0) x[i] = (x[i] - rng[1]) / (rng[2] - rng[1])
+  }
+  return (x)
+}
+```
+```{r}
 energy <- energy %>%
   mutate(
     CLEIK_scaled = rescale01(CLEIK),
     NGEIK_scaled = rescale01(NGEIK),
     PAEIK_scaled = rescale01(PAEIK)
   )
-```
-```{r}
 ## Calculate efficiency
 efficiency <- energy %>%
   select(Year, StateCode, CLEIK_scaled, NGEIK_scaled, PAEIK_scaled) %>%
   mutate(Efficiency = (CLEIK_scaled+NGEIK_scaled+PAEIK_scaled)/3)
-efficiency
 ```
 ```{r}
 ggplot(data = efficiency, mapping = aes(x = Year, y = Efficiency))+
@@ -83,16 +106,21 @@ ggplot(data = efficiency, mapping = aes(x = Year, y = Efficiency))+
 ```
 
 4. CO2 Emission per unit energy use
+It shows the level of carbon dioxide emission. As we all know, carbon dioxide is the main contributor of greenhouse effect which has a significant influence on environmental change. One main purpose that we advocate utilizing clean energy is that clean energy can markedly reduce the emission of carbon dioxide. We can assert that the less CO2 emission is, the healthier the energy performance is.
+$$
+CO_2~Emission~per~unit~Energy~Use=\frac{CO_2~emission(million~metric~tons)}{total~energy~consumption(billion~btu)}
+$$
 ```{r echo=FALSE}
-co2az = read.csv('co2_ar_fill_1.csv')
-co2ca = read.csv('co2_ca_fill_1.csv')
-co2nm = read.csv('co2_me_fill_1.csv')
-co2tx = read.csv('co2_te_fill_1.csv')
+co2az = read.csv('co2_ar_fill_2.csv')
+co2ca = read.csv('co2_ca_fill_2.csv')
+co2nm = read.csv('co2_me_fill_2.csv')
+co2tx = read.csv('co2_te_fill_2.csv')
 co2az['StateCode']='AZ'
 co2ca['StateCode']='CA'
 co2nm['StateCode']='NM'
 co2tx['StateCode']='TX'
 ```
+
 ```{r}
 ## Bind data from different files
 co2_emission <- rbind(co2az, co2ca, co2nm, co2tx) %>%
@@ -100,13 +128,13 @@ co2_emission <- rbind(co2az, co2ca, co2nm, co2tx) %>%
   rename(Year=year, CO2_Emission=Total) %>%
   filter(Year<=2009)
 ## Extract consumption data
-consumption <- energy %>%
+consumption2 <- energy %>%
   select(Year, StateCode, BMTCB, CLTCB, GETCB, HYTCB, NNTCB, PMTCB, WYTCB, SOTCB, NUETB, TETCB) %>%
   mutate(Total_Consumption = BMTCB + CLTCB + GETCB + HYTCB + NNTCB + PMTCB + WYTCB + SOTCB + NUETB) %>%
   select(Year, StateCode, Total_Consumption, TETCB)
 ## Take the log of consumption to prevent small values
 co2_emission <- co2_emission %>% 
-  left_join(consumption, by = c('Year', 'StateCode')) %>%
+  left_join(consumption2, by = c('Year', 'StateCode')) %>%
   mutate(Unit_CO2_Emission = CO2_Emission/log(Total_Consumption))
   
 ## MinMaxScaler
@@ -120,14 +148,384 @@ ggplot(data = co2_emission, mapping = aes(x = Year, y = Unit_CO2_Emission_scaled
 ```
 
 ### Economic Growth and Development
+
 1. Energy Intensity
+It is defined as GDP per unit energy use. It shows the contribution of per unit energy to the economy, which can also be used to compare the productivity of energy by state. 
+$$
+Energy ~Intensity=\frac{GDP(million~dollars)}{total~energy~consumption(billion~btu)}
+$$
+```{r}
+gdp <- read.csv('GDP_chained.csv')
+gdp <- gdp %>%
+  gather('AZ', 'CA', 'NM', 'TX', key = 'StateCode', value = GDP_Chained) %>%
+  filter(Year<=2009)
+```
+
+```{r}
+intensity <- gdp %>%
+  left_join(consumption, by = c('Year', 'StateCode')) %>%
+  mutate(Energy_Intensity = GDP_Chained/Total_Consumption) %>%
+  select(Year, StateCode, GDP_Chained, Total_Consumption, Energy_Intensity)
+## MinMaxScaler
+intensity <- intensity %>%
+  mutate(Energy_Intensity_scaled = rescale01(Energy_Intensity))
+```
+```{r}
+ggplot(data = intensity, mapping = aes(x = Year, y = Energy_Intensity_scaled))+
+  geom_line(mapping = aes(color = StateCode)) +
+  labs(y = "Energy Intensity (scaled to 0-1)")
+```
+
 2. Export Contribution
+It is the proportion of energy export expenditure and GDP. It shows part of the contribution to total GDP made by energy production. 
+$$
+Export ~Contribution=\frac{total~energy~export(million~dollars)}{GDP(million~dollars)}
+$$
+```{r}
+exp_imp <- energy %>%
+  select(Year, StateCode, ELEXV, ELIMV) %>%
+  left_join(gdp, by = c('Year', 'StateCode')) %>%
+  mutate(Export_Contri = ELEXV/GDP_Chained,
+         Import_Contri = ELIMV/GDP_Chained) %>%
+  mutate(Export_Contri_scaled = rescale01(Export_Contri),
+         Import_Contri_scaled = rescale01(Import_Contri))
+```
+```{r}
+ggplot(data = exp_imp, mapping = aes(x = Year, y = Export_Contri_scaled))+
+  geom_line(mapping = aes(color = StateCode)) +
+  labs(y = "Export Contribution (scaled to 0-1)")
+```
+
 3. Import Contribution
+Similiar to Export Contribution. 
+$$
+Import ~Contribution=\frac{total~energy~import(million~dollars)}{GDP(million~dollars)}
+$$
+```{r}
+ggplot(data = exp_imp, mapping = aes(x = Year, y = Import_Contri_scaled))+
+  geom_line(mapping = aes(color = StateCode)) +
+  labs(y = "Import Contribution (scaled to 0-1)")
+```
+
 4. Affordability
+It is represented by the electricity prices for industry. Empirically, more business owners want to produce more when the electricity price is lower, which subsequently can contribute to the growth of GDP.
+$$
+Affordability=1-electricity~ price~(MaxMin~scaled)
+$$
+```{r}
+afford <- energy %>%
+  select(Year, StateCode, ESTCD) %>%
+  mutate(ESTCD_scaled = 1 - rescale01_omit0(ESTCD))
+```
+```{r}
+ggplot(data = afford, mapping = aes(x = Year, y = ESTCD_scaled))+
+  geom_line(mapping = aes(color = StateCode)) +
+  labs(y = "Price Affordability (scaled to 0-1)")
+```
 
 ### Energy Access and Security
+
 1. Self Sufficiency
+It measures the ability for a state survive from import block. We take the electricity consumption to analysis. It is defined as the ratio of energy self-production and energy total consumption. If the import of electricity
+occupies a larger proportion of the total consumption, the state is more dependent on other states or other countries. Under this measure, dependence is not a good character. The less dependent on other regions, the higher the self sufficiency is.
+$$
+Self ~Sufficiency=1-\frac{electricity ~import(billion~btu)}{electricity ~total~ consumption(billion~btu)}
+$$
+```{r}
+self_suff <- energy %>%
+  select(Year, StateCode, ELIMB, ESTCB) %>%
+  mutate(Self_Suff = 1 - ELIMB/ESTCB)
+```
+```{r}
+ggplot(data = self_suff, mapping = aes(x = Year, y = Self_Suff))+
+  geom_line(mapping = aes(color = StateCode)) +
+  labs(y = "Self Sufficiency")
+```
+
 2. Energy Diversity Index
+It is an indicator quantify the diversity of a state’s energy structure, the higher the diversity index is, the more energy types are and the more evenly those types of energy are distributed in the structure. We perceive
+that if one of the energy is confronted by import block or other unexpected events, the state with diverse energy supply will be little influenced and function much better than the state which mainly depend on just on or two types of energy. However, we’ll finally reach a point that fossil fuels will be used up and the diversity
+must decline. Since in the short term there will be little concern about the energy exhaustion, we still use this measure. To calculate the diversity, we gain the help of **Herfindahl index**.
+$$
+Energy ~Diversity ~Index=1- \sum_{i=1}^n P_i^2
+$$
+
+$\qquad where~P_i=the~percentage~of~each~ energy~ type~ consumption~ and~ total~ energy ~consumption.$
+```{r}
+## BMTCB + CLTCB + GETCB + HYTCB + NNTCB + PMTCB + WYTCB + SOTCB + NUETB = Total
+edi <- consumption %>%
+  mutate(EDI = 1 - ((BMTCB/Total_Consumption)^2+ 
+                   (CLTCB/Total_Consumption)^2+
+                   (GETCB/Total_Consumption)^2+
+                   (HYTCB/Total_Consumption)^2+
+                   (NNTCB/Total_Consumption)^2+
+                   (PMTCB/Total_Consumption)^2+
+                   (WYTCB/Total_Consumption)^2+
+                   (SOTCB/Total_Consumption)^2+
+                   (NUETB/Total_Consumption)^2))
+```
+```{r}
+ggplot(data = edi, mapping = aes(x = Year, y = EDI))+
+  geom_line(mapping = aes(color = StateCode)) +
+  labs(y = "Energy Diversity Index")
+```
+
 3. Price Stability
-4. Energy Production per capita
+It measures the stability of energy price. Price stability influence the anticipation of business owners and individuals. If the energy price varies so severely, energy-intensive corporations will suffer heavy cost burden. Consequently, it may prevent investors from investing money into those corporations. Moreover, individuals may conceive it as an unsecure governmental or economical issue, which may cause complaints and social problems. We use the change percentage of annual primary energy average price (dollars per million btu) to quantify this indicator.
+$$
+Price ~Stability=1-\frac{	\left| current ~year's ~price-last~ year's ~price \right|}{last ~year's~ price}
+$$
+```{r}
+price <- energy[c('Year','StateCode','PETCD')]
+p_az <- filter(price, StateCode=='AZ')
+p_ca <- filter(price, StateCode=='CA')
+p_nm <- filter(price, StateCode=='NM')
+p_tx <- filter(price, StateCode=='TX')
+```
+```{r}
+## calculate price stability
+cal_ps <- function(p) {
+  ## 从1970开始(1971才能算)，前面是没有数据的
+  res <- c()
+  for (i in seq(1, 11, by=1)){
+    res[i] <- 1
+  }
+  for (i in seq(12, length(p), by=1)){
+    res[i] <- 1 - abs(p[i] - p[i-1])/p[i-1]
+  }
+  return(res)
+}
+```
+```{r}
+ps_az <- p_az %>%
+  mutate(Price_Stab = cal_ps(PETCD))
+ps_ca <- p_ca %>%
+  mutate(Price_Stab = cal_ps(PETCD))
+ps_nm <- p_nm %>%
+  mutate(Price_Stab = cal_ps(PETCD))
+ps_tx <- p_tx %>%
+  mutate(Price_Stab = cal_ps(PETCD))
+ps <- rbind(ps_az, ps_ca, ps_nm, ps_tx)
+```
+```{r}
+ggplot(data = ps, mapping = aes(x = Year, y = Price_Stab))+
+  geom_line(mapping = aes(color = StateCode)) +
+  labs(y = "Price Stability")
+```
+
+4. Energy Production per capita (million btu per person)
+It indicates the average ability of a state to generate energy. If one person can produce more energy, there is less worry about energy accessibility.
+$$
+Energy ~Production ~per~ capita=\frac{total ~primary ~energy~ production(billion~btu)}{population ~size(thousand)}
+$$
+```{r}
+eppc <- energy %>%
+  left_join(production, by = c('Year', 'StateCode')) %>%
+  select('Year', 'StateCode', 'TPOPP', 'Total_Production') %>%
+  mutate(EPPC = Total_Production/TPOPP) %>%
+  mutate(EPPC_scaled = rescale01(EPPC))
+```
+```{r}
+ggplot(data = eppc, mapping = aes(x = Year, y = EPPC_scaled))+
+  geom_line(mapping = aes(color = StateCode)) +
+  labs(y = "Energy Production per capita (scaled to 0-1)")
+```
+
+## Apply AHP (Analytic Hierarchy Process)
+
+The analytic hierarchy process (AHP) is a structured technique for organizing and analyzing complex decisions, based on mathematics and psychology. It can generate weights from a combined way of subjectivity and objectivity.
+Here we use AHP to determine the weights of each indicators coupled with their mother index. 
+```{r}
+##输入：judgeMatrix 判断矩阵；round 结果约分位数
+##输出：权重
+weight <- function (judgeMatrix, round=3) {
+  n = ncol(judgeMatrix)
+  cumProd <- vector(length=n)
+  cumProd <- apply(judgeMatrix, 1, prod)  ##求每行连乘积
+  weight <- cumProd^(1/n)  ##开n次方(特征向量)
+  weight <- weight/sum(weight) ##求权重
+  round(weight, round)
+}
+##输入：judgeMatrix
+##输出：CI, CR
+CRtest <- function (judgeMatrix, round=3){
+  RI <- c(0, 0, 0.58, 0.9, 1.12, 1.24, 1.32, 1.41, 1.45, 1.49, 1.51) #随机一致性指标
+  Wi <- weight(judgeMatrix)  ##计算权重
+  n <- length(Wi)
+  if(n > 11){
+    cat("判断矩阵过大,请少于11个指标 \n")
+  }
+  if (n > 2) {
+    W <- matrix(Wi, ncol = 1) 
+    judgeW <- judgeMatrix %*% W 
+    JudgeW <- as.vector(judgeW)
+    la_max <- sum(JudgeW/Wi)/n
+    CI = (la_max - n)/(n - 1)
+    CR = CI/RI[n]
+    cat("CI=", round(CI, round), "\n")
+    cat("CR=", round(CR, round), "\n")
+    if (CR <= 0.1) {
+      cat(" Passed CR test! \n")
+      cat("Weights: ", round(Wi, round), "\n")
+    }
+    else {
+      cat("Please adjust the judge matrix, make CR < 0.1 \n")
+      Wi = NULL
+    }
+  }
+  else if (n <= 2) {
+    return(Wi)
+  }
+  consequence <- c(round(CI, round), round(CR, round))
+  names(consequence) <- c("CI", "CR")
+  consequence
+}
+```
+
+### Environmental Sustainability
+```{r}
+## the order of 4 indicators is RPR, RCR, EFF, CO2
+## generate judgeMatrix
+b <- c(1,3,1/3,1/2,
+       1/3,1,1/5,2,
+       3,5,1,4,
+       1/2,1/2,1/4,1)
+judgeMatix <- matrix(b, ncol=4)
+```
+```{r}
+## calculate the Consistency Index and Consistency Ratio
+CRtest(judgeMatix)
+```
+
+### Economic Growth and Development
+```{r}
+## the order of 4 indicators is EI, ExpContri, ImpContri, Aff
+## generate judgeMatrix
+b <- c(1,1/2,1/3,1/5,
+       2,1,1/2,1/3,
+       3,2,1,2/3,
+       5,3,3/2,1)
+judgeMatix <- matrix(b, ncol=4)
+```
+```{r}
+## calculate the Consistency Index and Consistency Ratio
+CRtest(judgeMatix)
+```
+
+### Energy Access and Security
+```{r}
+## the order of 4 indicators is SelfSuff, EDI, PS, EPPC
+## generate judgeMatrix
+b <- c(1,5,2,4,
+       1/5,1,1/3,1/2,
+       1/2,3,1,2,
+       1/4,2,1/2,1)
+judgeMatix <- matrix(b, ncol=4)
+```
+```{r}
+## calculate the Consistency Index and Consistency Ratio
+CRtest(judgeMatix)
+```
+
+## Generate the indexes for each state
+```{r}
+## set weights
+es_w <- matrix(c(0.197, 0.388, 0.084, 0.331), ncol=1)
+eg_w <- matrix(c(0.485, 0.273, 0.147, 0.095), ncol=1)
+ea_w <- matrix(c(0.081, 0.476, 0.155, 0.288), ncol=1)
+```
+```{r}
+## combine indicators
+## ES
+es <- production %>%
+  select('Year', 'StateCode', 'Renew_Ratio') %>%
+  transmute(Year = Year,
+            StateCode = StateCode,
+    renew_ratio_production = Renew_Ratio) %>%
+  left_join(consumption, by = c('Year', 'StateCode')) %>%
+  mutate(renew_ratio_consumption = Renew_Ratio) %>%
+  left_join(efficiency, by = c('Year', 'StateCode')) %>%
+  mutate(efficiency_factor_converting = Efficiency) %>%
+  left_join(co2_emission, by = c('Year', 'StateCode')) %>%
+  mutate(unit_co2_emission = Unit_CO2_Emission_scaled) %>%
+  select('Year', 'StateCode', 'renew_ratio_production', 'renew_ratio_consumption',
+         'efficiency_factor_converting', 'unit_co2_emission') %>%
+   mutate(es = matrix(c(renew_ratio_production, 
+                       renew_ratio_consumption, 
+                       efficiency_factor_converting, 
+                       unit_co2_emission), ncol=4)%*%es_w)
+## EG
+eg <- intensity %>%
+  select('Year', 'StateCode', 'Energy_Intensity_scaled') %>%
+  mutate(energy_intensity = Energy_Intensity_scaled) %>%
+  left_join(exp_imp, by = c('Year', 'StateCode')) %>%
+  mutate(export_contribution = Export_Contri_scaled,
+         import_contribution = Import_Contri_scaled) %>%
+  left_join(afford, by = c('Year', 'StateCode')) %>%
+  mutate(affordability = ESTCD_scaled) %>%
+  select('Year', 'StateCode', 'energy_intensity', 'export_contribution',
+         'import_contribution', 'affordability') %>%
+   mutate(eg = matrix(c(energy_intensity, 
+                       export_contribution, 
+                       import_contribution, 
+                       affordability), ncol=4)%*%eg_w)
+## EA
+ea <- self_suff %>%
+  select('Year', 'StateCode', 'Self_Suff') %>%
+  mutate(self_sufficiency = Self_Suff) %>%
+  left_join(edi, by = c('Year', 'StateCode')) %>%
+  mutate(energy_diversity_index = EDI) %>%
+  left_join(ps, by = c('Year', 'StateCode')) %>%
+  mutate(price_stability = Price_Stab) %>%
+  left_join(eppc, by = c('Year', 'StateCode')) %>%
+  mutate(energy_production_per_capita = EPPC_scaled) %>%
+  select('Year', 'StateCode', 'self_sufficiency', 'energy_diversity_index',
+         'price_stability', 'energy_production_per_capita') %>%
+   mutate(ea = matrix(c(self_sufficiency, 
+                       energy_diversity_index, 
+                       price_stability, 
+                       energy_production_per_capita), ncol=4)%*%ea_w)
+```
+```{r}
+ggplot(data = es, mapping = aes(x = Year, y = es))+
+  geom_line(mapping = aes(color = StateCode)) +
+  labs(y = "Environmental Sustainability")
+ggplot(data = eg, mapping = aes(x = Year, y = eg))+
+  geom_line(mapping = aes(color = StateCode)) +
+  labs(y = "Economic Growth and Development")
+ggplot(data = ea, mapping = aes(x = Year, y = ea))+
+  geom_line(mapping = aes(color = StateCode)) +
+  labs(y = "Energy Access and Security")
+```
+As for Environmental Sustainability, California and Texas keep growing on this index. On the contrary, Arizona had a huge decrease of almost 0.2 over the 50 years. As for the general performance, none of the state gain a relatively high score of Environmental Sustainability. 
+Here we come to Economic Growth and Development. All of the states keep increasing on this index, which indicate that the energy play a more and more important role in economic growth. Specificly, California has the fastest speed of growing. 
+About Energy Access and Security, all the states show a fluctuation around some baselines. New Mexico always does the best and Califonia always does the worst. 
+```{r}
+index_2009 <- es %>%
+  left_join(eg, by = c('Year', 'StateCode')) %>%
+  left_join(ea, by = c('Year', 'StateCode')) %>%
+  filter(Year == 2009) %>%
+  select('StateCode', 'es', 'eg', 'ea')
+```
+```{r fig.height = 6, fig.width = 9}
+ggradar(index_2009)
+```
+
+```{r}
+index_2009.T <- t(index_2009[,2:ncol(index_2009)])
+colnames(index_2009.T) <- index_2009[,1] 
+index_2009.T <- data.frame(index_2009.T)
+```
+```{r}
+index_2009.T <- index_2009.T %>%
+  mutate(Indexes = row.names(index_2009.T)) %>%
+  select('Indexes', 'AZ', 'CA', 'NM', 'TX')
+```
+```{r fig.height = 6, fig.width = 9}
+ggradar(index_2009.T)
+```
+
+For a specific year, we can draw a radar chart to compare among the four states. As we can see, California wins on both Environmental Sustainability and Economic Growth and Development and only losts on Energy Access and Security. Therefore, we can say that California performs best in the year of 2009. 
+
+
 
