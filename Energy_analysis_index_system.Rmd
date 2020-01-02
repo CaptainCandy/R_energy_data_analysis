@@ -9,6 +9,29 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+# 4 Energy Performance Index
+
+After we have done some of the descriptive analysis of the energy data, we finally need to propose a method to evaluate the performance of each state. Because where exists a large number of variables that correlated to the performance, we didn't do the descriptive analysis for all the variables. Here we try to establish a system, that we called it as Energy Perform Index, to do the evaluation. 
+Here we also gain the help from *Global Energy Architecture Performance Index Report 2017*, cited as 
+
+>World Economic Forum. (2017). Global Energy Architecture Performance Index Report 2017. WEF and Accenture, 1-32.
+
+We utilize some of the variables which have already been introduced before combined with other variables we come up with or borrowed from the report above. We divide the variables to three main indexes, three perspective that we can gain insight of the energy performance:
+
+1. Environmental Sustainability (ES)
+    + ES is related to the environmental concerns like the emission of carbon dioxide. 
+
+
+2. Economic Growth and Development (EG)
+    + EG is related to the economic concerns like GDP. 
+
+3. Energy Access and Security (EA)
+    + EA is related to some concerns like energy diversity. 
+
+For each index, we take four variables as the indicators (sub-index), which we will illustrate in detailed formula later. Here we give out our architecture of our Energy Performance Index system on the figure showed below. 
+
+![](C:/Users/ZJUSO/OneDrive/ZJU Tang/Graduate/Courses/R language/group project/Architecture.png)
+
 ## Load packages
 ```{r warning=FALSE}
 library(dplyr)
@@ -108,7 +131,7 @@ ggplot(data = efficiency, mapping = aes(x = Year, y = Efficiency))+
 4. CO2 Emission per unit energy use
 It shows the level of carbon dioxide emission. As we all know, carbon dioxide is the main contributor of greenhouse effect which has a significant influence on environmental change. One main purpose that we advocate utilizing clean energy is that clean energy can markedly reduce the emission of carbon dioxide. We can assert that the less CO2 emission is, the healthier the energy performance is.
 $$
-CO_2~Emission~per~unit~Energy~Use=\frac{CO_2~emission(million~metric~tons)}{total~energy~consumption(billion~btu)}
+CO_2~Emission~per~unit~Energy~Use=1-\frac{CO_2~emission(million~metric~tons)}{total~energy~consumption(billion~btu)}(MaxMin~scaled)
 $$
 ```{r echo=FALSE}
 co2az = read.csv('co2_ar_fill_2.csv')
@@ -139,12 +162,12 @@ co2_emission <- co2_emission %>%
   
 ## MinMaxScaler
 co2_emission <- co2_emission %>%
-  mutate(Unit_CO2_Emission_scaled = rescale01(Unit_CO2_Emission))
+  mutate(Unit_CO2_Emission_scaled = 1 - rescale01(Unit_CO2_Emission))
 ```
 ```{r}
 ggplot(data = co2_emission, mapping = aes(x = Year, y = Unit_CO2_Emission_scaled))+
   geom_line(mapping = aes(color = StateCode)) +
-  labs(y = "Unit CO2 Emission (scaled to 0-1)")
+  labs(y = "Unit CO2 Emission (scaled to 1-0)")
 ```
 
 ### Economic Growth and Development
@@ -501,31 +524,36 @@ As for Environmental Sustainability, California and Texas keep growing on this i
 Here we come to Economic Growth and Development. All of the states keep increasing on this index, which indicate that the energy play a more and more important role in economic growth. Specificly, California has the fastest speed of growing. 
 About Energy Access and Security, all the states show a fluctuation around some baselines. New Mexico always does the best and Califonia always does the worst. 
 ```{r}
-index_2009 <- es %>%
+index_2007 <- es %>%
   left_join(eg, by = c('Year', 'StateCode')) %>%
   left_join(ea, by = c('Year', 'StateCode')) %>%
-  filter(Year == 2009) %>%
+  filter(Year == 2007) %>%
   select('StateCode', 'es', 'eg', 'ea')
 ```
 ```{r fig.height = 6, fig.width = 9}
-ggradar(index_2009)
+ggradar(index_2007)
+```
+```{r}
+index_2007 <- index_2007 %>%
+  mutate(average = (es+eg+ea)/3)
+index_2007
 ```
 
 ```{r}
-index_2009.T <- t(index_2009[,2:ncol(index_2009)])
-colnames(index_2009.T) <- index_2009[,1] 
-index_2009.T <- data.frame(index_2009.T)
+index_2007.T <- t(index_2007[,2:ncol(index_2007)])
+colnames(index_2007.T) <- index_2007[,1] 
+index_2007.T <- data.frame(index_2007.T)
 ```
 ```{r}
-index_2009.T <- index_2009.T %>%
-  mutate(Indexes = row.names(index_2009.T)) %>%
+index_2007.T <- index_2007.T %>%
+  mutate(Indexes = row.names(index_2007.T)) %>%
   select('Indexes', 'AZ', 'CA', 'NM', 'TX')
 ```
 ```{r fig.height = 6, fig.width = 9}
-ggradar(index_2009.T)
+ggradar(index_2007.T)
 ```
 
-For a specific year, we can draw a radar chart to compare among the four states. As we can see, California wins on both Environmental Sustainability and Economic Growth and Development and only losts on Energy Access and Security. Therefore, we can say that California performs best in the year of 2009. 
+For a specific year, we can draw a radar chart to compare among the four states. As we can see in 2007, Arizona, California and New Mexico win one index respectively. Thus, it is very different to determine the best state. If we set the weights of the three indexes evenly, we can see that Arizona reaches the highest average of 0.4789. However, different people, different governments will see things differently from different aspects. The weights can also be determined using AHP or simply by human. Therefore, we just leave the final step open to everyone who are interested in this index system and for the users who have different situations and concerns. 
 
 
 
